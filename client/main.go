@@ -17,12 +17,15 @@ import (
 var (
 	address = flag.String("address", "localhost:50051", "server address, with port")
 	name    = flag.String("name", "world", "name to greet")
+
+	dialTimeout = flag.Duration("dialTimeout", 10*time.Second, "timeout for creating grpc.ClientConn, format: 100ms, or 10s, or 2h")
+	rpcTimeout  = flag.Duration("rpcTimeout", time.Second, "timeout for each RPC, format: 100ms, or 10s, or 2h")
 )
 
 func main() {
 	flag.Parse()
 	// Set up a connection to the server.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), *dialTimeout)
 	defer cancel()
 	conn, err := grpc.DialContext(ctx, "xds-experimental:///"+*address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
@@ -33,13 +36,14 @@ func main() {
 
 	for {
 		// Contact the server and print out its response.
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
+		ctx, cancel := context.WithTimeout(context.Background(), *rpcTimeout)
 		p := new(peer.Peer)
 		r, err := c.SayHello(ctx, &pb.HelloRequest{Name: *name}, grpc.Peer(p))
 		if err != nil {
+			cancel()
 			log.Fatalf("could not greet: %v", err)
 		}
+		cancel()
 		log.Printf("Greeting: %s, from %v", r.GetMessage(), p.Addr)
 		time.Sleep(time.Second)
 	}
