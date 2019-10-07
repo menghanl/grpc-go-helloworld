@@ -20,6 +20,10 @@ var (
 
 	dialTimeout = flag.Duration("dialTimeout", 10*time.Second, "timeout for creating grpc.ClientConn, format: 100ms, or 10s, or 2h")
 	rpcTimeout  = flag.Duration("rpcTimeout", time.Second, "timeout for each RPC, format: 100ms, or 10s, or 2h")
+
+	totalTime = flag.Duration("time", time.Hour, "total time the binary runs, format: 100ms, or 10s, or 2h")
+
+	xds = flag.Bool("xds", true, "do xds or not")
 )
 
 func main() {
@@ -27,12 +31,20 @@ func main() {
 	// Set up a connection to the server.
 	ctx, cancel := context.WithTimeout(context.Background(), *dialTimeout)
 	defer cancel()
-	conn, err := grpc.DialContext(ctx, "xds-experimental:///"+*address, grpc.WithInsecure(), grpc.WithBlock())
+
+	addr := *address
+	if *xds {
+		addr = "xds-experimental:///" + addr
+	}
+
+	conn, err := grpc.DialContext(ctx, addr, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
 	defer conn.Close()
 	c := pb.NewGreeterClient(conn)
+
+	end := time.After(*totalTime)
 
 	for {
 		// Contact the server and print out its response.
@@ -45,6 +57,12 @@ func main() {
 		}
 		cancel()
 		log.Printf("Greeting: %s, from %v", r.GetMessage(), p.Addr)
+
+		select {
+		case <-end:
+			return
+		default:
+		}
 		time.Sleep(time.Second)
 	}
 }
