@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"time"
 
@@ -56,7 +57,7 @@ func main() {
 			log.Fatalf("could not greet: %v", err)
 		}
 		cancel()
-		log.Printf("Greeting: %s, from %v", r.GetMessage(), p.Addr)
+		fmt.Printf("Greeting: %s, from %v\n", r.GetMessage(), p.Addr)
 
 		select {
 		case <-end:
