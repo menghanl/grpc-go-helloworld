@@ -23,7 +23,51 @@ var (
 	rpcTimeout  = flag.Duration("rpcTimeout", time.Second, "timeout for each RPC, format: 100ms, or 10s, or 2h")
 
 	watch = flag.Bool("watch", false, "streaming watch or not")
+	totalTime = flag.Duration("time", time.Hour, "total time the binary runs, format: 100ms, or 10s, or 2h")
+	gap = flag.Duration("gap", time.Second, "sleep between RPCs")
 )
+
+func fetchB(end <-chan time.Time, c walletpb.WalletClient) {
+	for {
+		var header metadata.MD
+		ctx, cancel := context.WithTimeout(context.Background(), *rpcTimeout)
+		defer cancel()
+		r, err := c.FetchBalance(ctx, &walletpb.BalanceRequest{}, grpc.Header(&header))
+		if err != nil {
+			log.Fatalf("could not fetch: %v", err)
+		}
+		fmt.Printf("Fetch: %v, from %v\n", r, header["hostname"])
+
+		select {
+		case <-end:
+			return
+		default:
+		}
+		time.Sleep(*gap)
+	}
+}
+
+func watchB(end <-chan time.Time, c walletpb.WalletClient) {
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), *rpcTimeout)
+		defer cancel()
+		s, err := c.WatchBalance(ctx, &walletpb.BalanceRequest{})
+		if err != nil {
+			log.Fatalf("could not fetch: %v", err)
+		}
+		header, _ := s.Header()
+		r, _ := s.Recv()
+		fmt.Printf("Watch: %v, from %v\n", r, header["hostname"])
+
+
+		select {
+		case <-end:
+			return
+		default:
+		}
+		time.Sleep(*gap)
+	}
+}
 
 func main() {
 	flag.Parse()
@@ -40,27 +84,11 @@ func main() {
 	defer conn.Close()
 	c := walletpb.NewWalletClient(conn)
 
+	end := time.After(*totalTime)
+
 	if !*watch {
-		var header metadata.MD
-		ctx, cancel := context.WithTimeout(context.Background(), *rpcTimeout)
-		defer cancel()
-		r, err := c.FetchBalance(ctx, &walletpb.BalanceRequest{}, grpc.Header(&header))
-		if err != nil {
-			log.Fatalf("could not fetch: %v", err)
-		}
-		fmt.Printf("Fetch: %v, from %v\n", r, header["hostname"])
+		fetchB(end, c)
 		return
 	}
-
-	{
-		ctx, cancel := context.WithTimeout(context.Background(), *rpcTimeout)
-		defer cancel()
-		s, err := c.WatchBalance(ctx, &walletpb.BalanceRequest{})
-		if err != nil {
-			log.Fatalf("could not fetch: %v", err)
-		}
-		header, _ := s.Header()
-		r, _ := s.Recv()
-		fmt.Printf("Watch: %v, from %v\n", r, header["hostname"])
-	}
+	watchB(end, c)
 }
